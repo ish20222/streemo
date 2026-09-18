@@ -34,7 +34,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
 
   if (!allowed) return jsonError("Unauthorized", 401);
 
-  if (process.env.STORAGE_MODE === "r2") {
+  if (process.env.STORAGE_MODE === "s3" || process.env.STORAGE_MODE === "r2") {
     return jsonError("Use signed download URL from manifest", 400);
   }
 

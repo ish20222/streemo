@@ -11,26 +11,28 @@ import path from "path";
 
 const LOCAL_UPLOAD_DIR = path.join(process.cwd(), "uploads");
 
-function storageMode(): "local" | "r2" {
-  return process.env.STORAGE_MODE === "r2" ? "r2" : "local";
+function storageMode(): "local" | "s3" {
+  const mode = (process.env.STORAGE_MODE || "local").toLowerCase();
+  // Accept legacy "r2" as s3-compatible cloud storage
+  if (mode === "s3" || mode === "r2") return "s3";
+  return "local";
 }
 
-function getR2Client() {
-  const accountId = process.env.R2_ACCOUNT_ID;
-  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-  if (!accountId || !accessKeyId || !secretAccessKey) {
-    throw new Error("R2 credentials are not configured");
+function getS3Client() {
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+  const region = process.env.AWS_REGION || "us-east-1";
+  if (!accessKeyId || !secretAccessKey) {
+    throw new Error("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required when STORAGE_MODE=s3");
   }
   return new S3Client({
-    region: "auto",
-    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    region,
     credentials: { accessKeyId, secretAccessKey },
   });
 }
 
 function bucket() {
-  return process.env.R2_BUCKET || "streemo";
+  return process.env.AWS_S3_BUCKET || process.env.S3_BUCKET || "streemo";
 }
 
 export function checksumBuffer(buf: Buffer) {
@@ -44,7 +46,7 @@ export async function putObject(key: string, body: Buffer, contentType: string) 
     await writeFile(full, body);
     return;
   }
-  const client = getR2Client();
+  const client = getS3Client();
   await client.send(
     new PutObjectCommand({
       Bucket: bucket(),
@@ -64,7 +66,7 @@ export async function deleteObject(key: string) {
     }
     return;
   }
-  const client = getR2Client();
+  const client = getS3Client();
   await client.send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }));
 }
 
@@ -72,7 +74,7 @@ export async function getLocalObject(key: string) {
   return readFile(path.join(LOCAL_UPLOAD_DIR, key));
 }
 
-/** Signed URL for R2, or app URL for local storage (optional device token query). */
+/** Signed S3 URL, or app URL for local storage (optional device token query). */
 export async function getDownloadUrl(
   key: string,
   mediaId: string,
@@ -86,7 +88,7 @@ export async function getDownloadUrl(
     }
     return url;
   }
-  const client = getR2Client();
+  const client = getS3Client();
   return getSignedUrl(
     client,
     new GetObjectCommand({ Bucket: bucket(), Key: key }),

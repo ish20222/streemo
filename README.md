@@ -7,7 +7,7 @@ Dashboard and API hosted on **Railway**. Raspberry Pi 4 agents download, cache, 
 | Piece | Role |
 |--------|------|
 | `apps/web` | Next.js dashboard + REST API + WebSocket (`/ws/devices`) |
-| Cloudflare R2 (or local disk) | Uploaded media storage |
+| AWS S3 (or local disk) | Uploaded media storage |
 | PostgreSQL | Users, devices, playlists, playback state |
 | `apps/pi-agent` | Python agent + `mpv` video/music players |
 | `deploy/pi` | Install script + systemd units |
@@ -20,7 +20,7 @@ Video audio is **muted by default**; the music service owns the speakers (`analo
 
 - Node 22+
 - PostgreSQL (or Docker: `docker compose up -d`)
-- (Optional) Cloudflare R2 bucket for production-like storage
+- (Optional) AWS S3 bucket for production storage
 
 ```bash
 docker compose up -d   # starts Postgres on localhost:5432
@@ -38,7 +38,7 @@ npm run dev       # http://localhost:3000 (includes WebSocket)
 
 First launch with an empty DB redirects to **Setup** to create the admin account (seed is optional).
 
-Set `STORAGE_MODE=local` for local uploads under `apps/web/uploads`. For Railway, set `STORAGE_MODE=r2` and R2 credentials.
+Set `STORAGE_MODE=local` for local uploads under `apps/web/uploads`. For Railway, set `STORAGE_MODE=s3` and AWS credentials.
 
 ### Dashboard flow
 
@@ -58,11 +58,11 @@ Set `STORAGE_MODE=local` for local uploads under `apps/web/uploads`. For Railway
 AUTH_SECRET=...
 DEVICE_TOKEN_SECRET=...
 APP_URL=https://your-service.up.railway.app
-STORAGE_MODE=r2
-R2_ACCOUNT_ID=...
-R2_ACCESS_KEY_ID=...
-R2_SECRET_ACCESS_KEY=...
-R2_BUCKET=streemo
+STORAGE_MODE=s3
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+AWS_REGION=us-east-1
+AWS_S3_BUCKET=streemo
 ```
 
 4. Deploy using [`railway.json`](railway.json) / [`apps/web/Dockerfile`](apps/web/Dockerfile)  
