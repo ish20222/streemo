@@ -2,7 +2,8 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
-import { prisma } from "./prisma";
+import { connectMongo } from "./db";
+import { User, toJSON } from "./models";
 
 const AUTH_COOKIE = "streemo_session";
 
@@ -57,10 +58,14 @@ export async function getSessionUser() {
   try {
     const { payload } = await jwtVerify(token, getAuthSecret());
     if (payload.typ !== "user" || typeof payload.sub !== "string") return null;
-    return prisma.user.findUnique({
-      where: { id: payload.sub },
-      select: { id: true, email: true, name: true },
-    });
+    await connectMongo();
+    const user: any = await User.findById(payload.sub).lean();
+    if (!user) return null;
+    return {
+      id: String(user._id),
+      email: user.email as string,
+      name: (user.name as string) || null,
+    };
   } catch {
     return null;
   }
@@ -100,4 +105,4 @@ export function getBearerToken(req: NextRequest | Request) {
   return header.slice(7);
 }
 
-export { AUTH_COOKIE };
+export { AUTH_COOKIE, toJSON };

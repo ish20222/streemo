@@ -1,12 +1,18 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { connectMongo } from "@/lib/db";
+import { User } from "@/lib/models";
 
 export default async function HomePage() {
   const user = await getSessionUser();
   if (user) redirect("/devices");
 
-  const userCount = await prisma.user.count().catch(() => 0);
-  if (userCount === 0) redirect("/setup");
+  try {
+    await connectMongo();
+    const userCount = await User.countDocuments();
+    if (userCount === 0) redirect("/setup");
+  } catch {
+    redirect("/setup");
+  }
   redirect("/login");
 }

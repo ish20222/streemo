@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { connectMongo } from "@/lib/db";
+import { Device, Playlist, toJSON } from "@/lib/models";
 import { deviceHub } from "@/lib/device-hub";
 import { jsonError } from "@/lib/utils";
 
@@ -14,17 +15,23 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
     return e as Response;
   }
   const { id } = await ctx.params;
-  const device = await prisma.device.findUnique({
-    where: { id },
-    include: {
-      videoPlaylist: true,
-      musicPlaylist: true,
-      playbackState: true,
-    },
-  });
+  await connectMongo();
+  const device = await Device.findById(id);
   if (!device) return jsonError("Device not found", 404);
+
+  const d = toJSON<any>(device);
+  const [videoPlaylist, musicPlaylist] = await Promise.all([
+    d.videoPlaylistId ? Playlist.findById(d.videoPlaylistId).lean() : null,
+    d.musicPlaylistId ? Playlist.findById(d.musicPlaylistId).lean() : null,
+  ]);
+
   return Response.json({
-    device: { ...device, liveOnline: deviceHub.isOnline(device.id) },
+    device: {
+      ...d,
+      videoPlaylist: videoPlaylist ? toJSON(videoPlaylist) : null,
+      musicPlaylist: musicPlaylist ? toJSON(musicPlaylist) : null,
+      liveOnline: deviceHub.isOnline(d.id),
+    },
   });
 }
 
@@ -49,13 +56,9 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) return jsonError("Invalid update");
 
-  const existing = await prisma.device.findUnique({ where: { id } });
-  if (!existing) return jsonError("Device not found", 404);
-
-  const device = await prisma.device.update({
-    where: { id },
-    data: parsed.data,
-  });
+  await connectMongo();
+  const device = await Device.findByIdAndUpdate(id, { $set: parsed.data }, { new: true });
+  if (!device) return jsonError("Device not found", 404);
 
   deviceHub.send(id, {
     type: "config",
@@ -65,7 +68,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   });
   deviceHub.notifyQueueUpdated(id);
 
-  return Response.json({ device });
+  return Response.json({ device: toJSON(device) });
 }
 
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
@@ -75,6 +78,7 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
     return e as Response;
   }
   const { id } = await ctx.params;
-  await prisma.device.delete({ where: { id } }).catch(() => null);
+  await connectMongo();
+  await Device.findByIdAndDelete(id);
   return Response.json({ ok: true });
 }

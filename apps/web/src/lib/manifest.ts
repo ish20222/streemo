@@ -1,65 +1,58 @@
-import { prisma } from "./prisma";
+import { connectMongo } from "./db";
+import { Device, Playlist, MediaAsset } from "./models";
 import { getDownloadUrl } from "./storage";
 
 export async function buildDeviceManifest(deviceId: string) {
-  const device = await prisma.device.findUnique({
-    where: { id: deviceId },
-    include: {
-      videoPlaylist: {
-        include: {
-          items: {
-            orderBy: { position: "asc" },
-            include: { media: true },
-          },
-        },
-      },
-      musicPlaylist: {
-        include: {
-          items: {
-            orderBy: { position: "asc" },
-            include: { media: true },
-          },
-        },
-      },
-    },
-  });
-
+  await connectMongo();
+  const device: any = await Device.findById(deviceId).lean();
   if (!device) return null;
-  const deviceToken = device.deviceToken;
+  const deviceToken = device.deviceToken as string | null;
 
-  async function mapItems(
-    items: { position: number; media: { id: string; filename: string; mimeType: string; size: number; checksum: string; storageKey: string; durationSec: number | null; type: string } }[]
-  ) {
-    return Promise.all(
-      items.map(async (item) => ({
+  async function mapPlaylistItems(playlistId: string | null | undefined) {
+    if (!playlistId) return [];
+    const playlist: any = await Playlist.findById(playlistId).lean();
+    if (!playlist?.items?.length) return [];
+    const sorted = [...playlist.items].sort(
+      (a: any, b: any) => (a.position ?? 0) - (b.position ?? 0)
+    );
+    const mediaIds = sorted.map((i: any) => i.mediaId);
+    const mediaList: any[] = await MediaAsset.find({
+      _id: { $in: mediaIds },
+    }).lean();
+    const byId = new Map(mediaList.map((m) => [String(m._id), m]));
+
+    const out = [];
+    for (const item of sorted) {
+      const media = byId.get(String(item.mediaId));
+      if (!media) continue;
+      out.push({
         position: item.position,
-        mediaId: item.media.id,
-        type: item.media.type,
-        filename: item.media.filename,
-        mimeType: item.media.mimeType,
-        size: item.media.size,
-        checksum: item.media.checksum,
-        durationSec: item.media.durationSec,
+        mediaId: String(media._id),
+        type: media.type,
+        filename: media.filename,
+        mimeType: media.mimeType,
+        size: media.size,
+        checksum: media.checksum,
+        durationSec: media.durationSec ?? null,
         downloadUrl: await getDownloadUrl(
-          item.media.storageKey,
-          item.media.id,
+          media.storageKey,
+          String(media._id),
           deviceToken
         ),
-      }))
-    );
+      });
+    }
+    return out;
   }
 
-  const videoQueue =
-    device.videoEnabled && device.videoPlaylist
-      ? await mapItems(device.videoPlaylist.items)
-      : [];
-  const musicQueue =
-    device.musicEnabled && device.musicPlaylist
-      ? await mapItems(device.musicPlaylist.items)
-      : [];
+  const videoQueue = device.videoEnabled
+    ? await mapPlaylistItems(device.videoPlaylistId)
+    : [];
+  const musicQueue = device.musicEnabled
+    ? await mapPlaylistItems(device.musicPlaylistId)
+    : [];
 
   return {
-    deviceId: device.id,
+    deviceId: String(device._id),
     name: device.name,
     videoEnabled: device.videoEnabled,
     musicEnabled: device.musicEnabled,

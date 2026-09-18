@@ -1,15 +1,16 @@
 import { NextRequest } from "next/server";
 import { getBearerToken, getSessionUser, verifyDeviceToken } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { connectMongo } from "@/lib/db";
+import { Device, MediaAsset } from "@/lib/models";
 import { getLocalObject } from "@/lib/storage";
 import { jsonError } from "@/lib/utils";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-/** Serve local uploads to authenticated dashboard users or paired devices. */
 export async function GET(req: NextRequest, ctx: Ctx) {
   const { id } = await ctx.params;
-  const media = await prisma.mediaAsset.findUnique({ where: { id } });
+  await connectMongo();
+  const media = await MediaAsset.findById(id);
   if (!media) return jsonError("Not found", 404);
 
   const user = await getSessionUser();
@@ -18,16 +19,15 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   if (!allowed && token) {
     const deviceId = await verifyDeviceToken(token);
     if (deviceId) {
-      const device = await prisma.device.findUnique({ where: { id: deviceId } });
+      const device = await Device.findById(deviceId);
       allowed = !!device && device.deviceToken === token;
     }
   }
-  // Also allow token query for mpv/curl simplicity on Pi when using local storage
   const qToken = req.nextUrl.searchParams.get("token");
   if (!allowed && qToken) {
     const deviceId = await verifyDeviceToken(qToken);
     if (deviceId) {
-      const device = await prisma.device.findUnique({ where: { id: deviceId } });
+      const device = await Device.findById(deviceId);
       allowed = !!device && device.deviceToken === qToken;
     }
   }

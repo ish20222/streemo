@@ -8,7 +8,7 @@ Dashboard and API hosted on **Railway**. Raspberry Pi 4 agents download, cache, 
 |--------|------|
 | `apps/web` | Next.js dashboard + REST API + WebSocket (`/ws/devices`) |
 | AWS S3 (or local disk) | Uploaded media storage |
-| PostgreSQL | Users, devices, playlists, playback state |
+| MongoDB (`streemo` database) | Users, devices, playlists, playback state |
 | `apps/pi-agent` | Python agent + `mpv` video/music players |
 | `deploy/pi` | Install script + systemd units |
 
@@ -19,19 +19,17 @@ Video audio is **muted by default**; the music service owns the speakers (`analo
 ### Prerequisites
 
 - Node 22+
-- PostgreSQL (or Docker: `docker compose up -d`)
+- MongoDB (set `MONGODB_URI` — database name `streemo`)
 - (Optional) AWS S3 bucket for production storage
 
 ```bash
-docker compose up -d   # starts Postgres on localhost:5432
 cp apps/web/.env.example apps/web/.env
-# Edit DATABASE_URL, AUTH_SECRET, DEVICE_TOKEN_SECRET, APP_URL
+# Edit MONGODB_URI, AUTH_SECRET, DEVICE_TOKEN_SECRET, APP_URL
 ```
 
 ```bash
 cd apps/web
 npm install
-npx prisma db push
 npm run db:seed   # admin@streemo.local / admin123
 npm run dev       # http://localhost:3000 (includes WebSocket)
 ```
@@ -51,10 +49,10 @@ Set `STORAGE_MODE=local` for local uploads under `apps/web/uploads`. For Railway
 ## Railway deploy
 
 1. Create a Railway project from this repo  
-2. Add a **PostgreSQL** plugin; set `DATABASE_URL`  
-3. Set environment variables:
+2. Set environment variables:
 
 ```
+MONGODB_URI=mongodb://user:pass@host:27017/streemo
 AUTH_SECRET=...
 DEVICE_TOKEN_SECRET=...
 APP_URL=https://your-service.up.railway.app
@@ -65,8 +63,7 @@ AWS_REGION=us-east-1
 AWS_S3_BUCKET=streemo
 ```
 
-4. Deploy using [`railway.json`](railway.json) / [`apps/web/Dockerfile`](apps/web/Dockerfile)  
-5. On first boot the start command runs `prisma db push` then the custom server  
+3. Deploy using [`railway.json`](railway.json) / [`apps/web/Dockerfile`](apps/web/Dockerfile)  
 
 Open `APP_URL`, complete setup, then pair Pis.
 

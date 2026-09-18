@@ -5,8 +5,6 @@
     "dev": "npm run dev --prefix apps/web",
     "build": "npm run build --prefix apps/web",
     "start": "npm run start --prefix apps/web",
-    "db:push": "npm run db:push --prefix apps/web",
-    "db:generate": "npm run db:generate --prefix apps/web",
     "db:seed": "npm run db:seed --prefix apps/web"
   }
 }

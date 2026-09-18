@@ -1,20 +1,21 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
+import { connectMongo } from "@/lib/db";
 import { deviceHub } from "@/lib/device-hub";
-import { prisma } from "@/lib/prisma";
+import { Device, MediaAsset, Playlist, toJSON } from "@/lib/models";
 import { jsonError } from "@/lib/utils";
+import { customAlphabet } from "nanoid";
+
+const itemId = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 24);
 
 type Ctx = { params: Promise<{ id: string }> };
 
 async function notifyDevicesUsingPlaylist(playlistId: string) {
-  const devices = await prisma.device.findMany({
-    where: {
-      OR: [{ videoPlaylistId: playlistId }, { musicPlaylistId: playlistId }],
-    },
-    select: { id: true },
-  });
-  for (const d of devices) deviceHub.notifyQueueUpdated(d.id);
+  const devices = await Device.find({
+    $or: [{ videoPlaylistId: playlistId }, { musicPlaylistId: playlistId }],
+  }).select("_id");
+  for (const d of devices) deviceHub.notifyQueueUpdated(String(d._id));
 }
 
 const addSchema = z.object({
@@ -32,16 +33,15 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     return e as Response;
   }
   const { id } = await ctx.params;
-  const playlist = await prisma.playlist.findUnique({ where: { id } });
+  await connectMongo();
+  const playlist = await Playlist.findById(id);
   if (!playlist) return jsonError("Playlist not found", 404);
 
   const body = await req.json().catch(() => null);
   const parsed = addSchema.safeParse(body);
   if (!parsed.success) return jsonError("mediaId required");
 
-  const media = await prisma.mediaAsset.findUnique({
-    where: { id: parsed.data.mediaId },
-  });
+  const media = await MediaAsset.findById(parsed.data.mediaId);
   if (!media) return jsonError("Media not found", 404);
 
   if (playlist.kind === "video" && media.type !== "video") {
@@ -51,19 +51,34 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     return jsonError("Music playlists only accept audio files");
   }
 
-  const max = await prisma.playlistItem.aggregate({
-    where: { playlistId: id },
-    _max: { position: true },
-  });
-  const position = (max._max.position ?? -1) + 1;
+  const position =
+    playlist.items.length === 0
+      ? 0
+      : Math.max(...playlist.items.map((i: any) => i.position)) + 1;
 
-  const item = await prisma.playlistItem.create({
-    data: { playlistId: id, mediaId: media.id, position },
-    include: { media: true },
-  });
+  const newItem = {
+    _id: itemId(),
+    mediaId: String(media._id),
+    position,
+    startAt: null,
+    endAt: null,
+    createdAt: new Date(),
+  };
+  playlist.items.push(newItem);
+  await playlist.save();
 
   await notifyDevicesUsingPlaylist(id);
-  return Response.json({ item }, { status: 201 });
+  return Response.json(
+    {
+      item: {
+        id: newItem._id,
+        mediaId: newItem.mediaId,
+        position: newItem.position,
+        media: toJSON(media),
+      },
+    },
+    { status: 201 }
+  );
 }
 
 export async function PUT(req: NextRequest, ctx: Ctx) {
@@ -77,14 +92,22 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
   const parsed = reorderSchema.safeParse(body);
   if (!parsed.success) return jsonError("itemIds required");
 
-  await prisma.$transaction(
-    parsed.data.itemIds.map((itemId, index) =>
-      prisma.playlistItem.updateMany({
-        where: { id: itemId, playlistId: id },
-        data: { position: index },
-      })
-    )
+  await connectMongo();
+  const playlist = await Playlist.findById(id);
+  if (!playlist) return jsonError("Not found", 404);
+
+  const byId = new Map<string, any>(
+    playlist.items.map((i: any) => [String(i._id), i])
   );
+  playlist.items = parsed.data.itemIds
+    .map((iid, index) => {
+      const item = byId.get(iid);
+      if (!item) return null;
+      item.position = index;
+      return item;
+    })
+    .filter(Boolean);
+  await playlist.save();
 
   await notifyDevicesUsingPlaylist(id);
   return Response.json({ ok: true });
@@ -97,25 +120,20 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
     return e as Response;
   }
   const { id } = await ctx.params;
-  const itemId = req.nextUrl.searchParams.get("itemId");
-  if (!itemId) return jsonError("itemId required");
+  const itemIdParam = req.nextUrl.searchParams.get("itemId");
+  if (!itemIdParam) return jsonError("itemId required");
 
-  await prisma.playlistItem.deleteMany({
-    where: { id: itemId, playlistId: id },
-  });
+  await connectMongo();
+  const playlist = await Playlist.findById(id);
+  if (!playlist) return jsonError("Not found", 404);
 
-  const remaining = await prisma.playlistItem.findMany({
-    where: { playlistId: id },
-    orderBy: { position: "asc" },
+  playlist.items = playlist.items.filter(
+    (i: any) => String(i._id) !== itemIdParam
+  ) as any;
+  playlist.items.forEach((item: any, index: number) => {
+    item.position = index;
   });
-  await prisma.$transaction(
-    remaining.map((item, index) =>
-      prisma.playlistItem.update({
-        where: { id: item.id },
-        data: { position: index },
-      })
-    )
-  );
+  await playlist.save();
 
   await notifyDevicesUsingPlaylist(id);
   return Response.json({ ok: true });

@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
+import { connectMongo } from "@/lib/db";
 import { deviceHub } from "@/lib/device-hub";
-import { prisma } from "@/lib/prisma";
+import { Device } from "@/lib/models";
 import { jsonError } from "@/lib/utils";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -25,7 +26,8 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     return e as Response;
   }
   const { id } = await ctx.params;
-  const device = await prisma.device.findUnique({ where: { id } });
+  await connectMongo();
+  const device = await Device.findById(id);
   if (!device) return jsonError("Device not found", 404);
 
   const body = await req.json().catch(() => null);

@@ -30,9 +30,11 @@ async function verifyDeviceToken(token: string): Promise<string | null> {
 async function main() {
   await app.prepare();
 
-  // Lazy-load hub after env is available; use dynamic import so prisma path works
   const { deviceHub } = await import("./src/lib/device-hub");
-  const { prisma } = await import("./src/lib/prisma");
+  const { connectMongo } = await import("./src/lib/db");
+  const { Device } = await import("./src/lib/models");
+  await connectMongo();
+  console.log("> MongoDB connected (database: streemo)");
 
   const server = createServer((req, res) => {
     const parsedUrl = parse(req.url!, true);
@@ -67,7 +69,7 @@ async function main() {
       return;
     }
 
-    const device = await prisma.device.findUnique({ where: { id: deviceId } });
+    const device = await Device.findById(deviceId);
     if (!device || device.deviceToken !== token) {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
       socket.destroy();
@@ -81,9 +83,9 @@ async function main() {
 
   wss.on("connection", async (ws: WebSocket, _req: unknown, deviceId: string) => {
     deviceHub.connect(deviceId, ws);
-    await prisma.device.update({
-      where: { id: deviceId },
-      data: { status: "online", lastSeenAt: new Date() },
+    await Device.findByIdAndUpdate(deviceId, {
+      status: "online",
+      lastSeenAt: new Date(),
     });
 
     ws.send(JSON.stringify({ type: "connected", deviceId }));
@@ -92,32 +94,22 @@ async function main() {
       try {
         const msg = JSON.parse(String(raw));
         if (msg.type === "heartbeat") {
-          await prisma.device.update({
-            where: { id: deviceId },
-            data: { status: "online", lastSeenAt: new Date() },
-          });
+          const update: Record<string, unknown> = {
+            status: "online",
+            lastSeenAt: new Date(),
+          };
           if (msg.playback) {
-            await prisma.playbackState.upsert({
-              where: { deviceId },
-              create: {
-                deviceId,
-                videoMediaId: msg.playback.videoMediaId ?? null,
-                musicMediaId: msg.playback.musicMediaId ?? null,
-                videoPositionSec: msg.playback.videoPositionSec ?? null,
-                musicPositionSec: msg.playback.musicPositionSec ?? null,
-                videoStatus: msg.playback.videoStatus ?? "idle",
-                musicStatus: msg.playback.musicStatus ?? "idle",
-              },
-              update: {
-                videoMediaId: msg.playback.videoMediaId ?? null,
-                musicMediaId: msg.playback.musicMediaId ?? null,
-                videoPositionSec: msg.playback.videoPositionSec ?? null,
-                musicPositionSec: msg.playback.musicPositionSec ?? null,
-                videoStatus: msg.playback.videoStatus ?? "idle",
-                musicStatus: msg.playback.musicStatus ?? "idle",
-              },
-            });
+            update.playbackState = {
+              videoMediaId: msg.playback.videoMediaId ?? null,
+              musicMediaId: msg.playback.musicMediaId ?? null,
+              videoPositionSec: msg.playback.videoPositionSec ?? null,
+              musicPositionSec: msg.playback.musicPositionSec ?? null,
+              videoStatus: msg.playback.videoStatus ?? "idle",
+              musicStatus: msg.playback.musicStatus ?? "idle",
+              updatedAt: new Date(),
+            };
           }
+          await Device.findByIdAndUpdate(deviceId, { $set: update });
           ws.send(JSON.stringify({ type: "heartbeat_ack", ts: Date.now() }));
         } else if (msg.type === "error") {
           console.error(`[device ${deviceId}]`, msg.message);
@@ -129,10 +121,7 @@ async function main() {
 
     ws.on("close", async () => {
       try {
-        await prisma.device.update({
-          where: { id: deviceId },
-          data: { status: "offline" },
-        });
+        await Device.findByIdAndUpdate(deviceId, { status: "offline" });
       } catch {
         /* ignore */
       }

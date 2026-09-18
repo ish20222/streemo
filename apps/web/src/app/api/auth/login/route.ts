@@ -5,7 +5,8 @@ import {
   setSessionCookie,
   verifyPassword,
 } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { connectMongo } from "@/lib/db";
+import { User } from "@/lib/models";
 import { jsonError } from "@/lib/utils";
 
 const schema = z.object({
@@ -18,14 +19,17 @@ export async function POST(req: NextRequest) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return jsonError("Invalid credentials");
 
-  const user = await prisma.user.findUnique({
-    where: { email: parsed.data.email.toLowerCase() },
-  });
+  await connectMongo();
+  const user = await User.findOne({ email: parsed.data.email.toLowerCase() });
   if (!user || !(await verifyPassword(parsed.data.password, user.passwordHash))) {
     return jsonError("Invalid email or password", 401);
   }
 
-  const token = await createSessionToken(user.id);
+  const token = await createSessionToken(String(user._id));
   await setSessionCookie(token);
-  return Response.json({ id: user.id, email: user.email, name: user.name });
+  return Response.json({
+    id: String(user._id),
+    email: user.email,
+    name: user.name,
+  });
 }

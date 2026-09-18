@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { getBearerToken, verifyDeviceToken } from "@/lib/auth";
+import { connectMongo } from "@/lib/db";
 import { buildDeviceManifest } from "@/lib/manifest";
-import { prisma } from "@/lib/prisma";
+import { Device } from "@/lib/models";
 import { jsonError } from "@/lib/utils";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -14,16 +15,16 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   const deviceId = await verifyDeviceToken(token);
   if (!deviceId || deviceId !== id) return jsonError("Unauthorized", 401);
 
-  const device = await prisma.device.findUnique({ where: { id } });
+  await connectMongo();
+  const device = await Device.findById(id);
   if (!device || device.deviceToken !== token) return jsonError("Unauthorized", 401);
 
   const manifest = await buildDeviceManifest(id);
   if (!manifest) return jsonError("Device not found", 404);
 
-  await prisma.device.update({
-    where: { id },
-    data: { lastSeenAt: new Date(), status: "online" },
-  });
+  device.lastSeenAt = new Date();
+  device.status = "online";
+  await device.save();
 
   return Response.json(manifest);
 }

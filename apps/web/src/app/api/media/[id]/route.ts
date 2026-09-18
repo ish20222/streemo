@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireUser } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { connectMongo } from "@/lib/db";
+import { MediaAsset, Playlist } from "@/lib/models";
 import { deleteObject } from "@/lib/storage";
 import { jsonError } from "@/lib/utils";
 
@@ -13,10 +14,12 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
     return e as Response;
   }
   const { id } = await ctx.params;
-  const media = await prisma.mediaAsset.findUnique({ where: { id } });
+  await connectMongo();
+  const media = await MediaAsset.findById(id);
   if (!media) return jsonError("Not found", 404);
 
   await deleteObject(media.storageKey);
-  await prisma.mediaAsset.delete({ where: { id } });
+  await MediaAsset.findByIdAndDelete(id);
+  await Playlist.updateMany({}, { $pull: { items: { mediaId: id } } });
   return Response.json({ ok: true });
 }
