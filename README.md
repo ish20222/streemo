@@ -52,9 +52,9 @@ Set `STORAGE_MODE=local` for local uploads under `apps/web/uploads`. For Railway
 2. Set environment variables:
 
 ```
-MONGODB_URI=mongodb://user:pass@host:27017/streemo
-AUTH_SECRET=...
-DEVICE_TOKEN_SECRET=...
+MONGODB_URI=mongodb://ishananuradha:aezakmi%2540123@95.211.164.164:27017/streemo?authSource=admin
+AUTH_SECRET=<long-random-string>
+DEVICE_TOKEN_SECRET=<long-random-string>
 APP_URL=https://your-service.up.railway.app
 STORAGE_MODE=s3
 AWS_ACCESS_KEY_ID=...
