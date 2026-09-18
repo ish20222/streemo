@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Device {
+  id              String    @id @default(cuid())
+  name            String
+  location        String?
+  pairingCode     String    @unique
+  deviceToken     String?   @unique
+  status          String    @default("offline") // online | offline
+  lastSeenAt      DateTime?
+  videoEnabled    Boolean   @default(true)
+  musicEnabled    Boolean   @default(true)
+  audioSink       String    @default("analog") // analog | hdmi | bluetooth:<mac>
+  videoPlaylistId String?
+  musicPlaylistId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  videoPlaylist Playlist? @relation("DeviceVideoPlaylist", fields: [videoPlaylistId], references: [id], onDelete: SetNull)
+  musicPlaylist Playlist? @relation("DeviceMusicPlaylist", fields: [musicPlaylistId], references: [id], onDelete: SetNull)
+  playbackState PlaybackState?
+
+  @@index([deviceToken])
+  @@index([pairingCode])
+}
+
+model MediaAsset {
+  id          String   @id @default(cuid())
+  type        String // video | audio
+  filename    String
+  mimeType    String
+  size        Int
+  durationSec Float?
+  storageKey  String
+  checksum    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  playlistItems PlaylistItem[]
+}
+
+model Playlist {
+  id        String   @id @default(cuid())
+  name      String
+  kind      String // video | music
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items          PlaylistItem[]
+  videoDevices   Device[]       @relation("DeviceVideoPlaylist")
+  musicDevices   Device[]       @relation("DeviceMusicPlaylist")
+}
+
+model PlaylistItem {
+  id         String    @id @default(cuid())
+  playlistId String
+  mediaId    String
+  position   Int
+  startAt    DateTime?
+  endAt      DateTime?
+  createdAt  DateTime  @default(now())
+
+  playlist Playlist    @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  media    MediaAsset  @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@index([playlistId, position])
+}
+
+model PlaybackState {
+  id              String   @id @default(cuid())
+  deviceId        String   @unique
+  videoMediaId    String?
+  musicMediaId    String?
+  videoPositionSec Float?
+  musicPositionSec Float?
+  videoStatus     String   @default("idle") // idle | playing | paused
+  musicStatus     String   @default("idle")
+  updatedAt       DateTime @updatedAt
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+}

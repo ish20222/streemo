@@ -1,0 +1,2 @@
+# Notify Streemo when an HDMI screen is plugged or unplugged
+ACTION=="change", SUBSYSTEM=="drm", RUN+="/bin/systemctl kill -s HUP streemo-video.service"

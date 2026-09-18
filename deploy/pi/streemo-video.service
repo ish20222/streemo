@@ -1,0 +1,25 @@
+[Unit]
+Description=Streemo video ad player (both HDMI outputs)
+After=streemo-agent.service local-fs.target
+Wants=streemo-agent.service
+
+[Service]
+Type=simple
+User=streemo
+Group=streemo
+SupplementaryGroups=video render
+Environment=STREEMO_STATE=/var/lib/streemo/state
+# Prefer DRM/KMS directly (no desktop required). Unset DISPLAY so mpv uses HDMI connectors.
+Environment=DISPLAY=
+ExecStart=/opt/streemo/venv/bin/streemo-video
+Restart=always
+RestartSec=2
+
+# Allow access to DRM devices for HDMI-A-1 / HDMI-A-2
+DeviceAllow=/dev/dri/card0 rw
+DeviceAllow=/dev/dri/card1 rw
+DeviceAllow=/dev/dri/renderD128 rw
+DeviceAllow=/dev/dri/renderD129 rw
+
+[Install]
+WantedBy=multi-user.target

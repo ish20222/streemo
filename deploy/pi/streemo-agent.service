@@ -1,0 +1,19 @@
+[Unit]
+Description=Streemo sync agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=streemo
+Group=streemo
+EnvironmentFile=-/etc/streemo/device.env
+Environment=STREEMO_CACHE=/var/lib/streemo/cache
+Environment=STREEMO_STATE=/var/lib/streemo/state
+Environment=STREEMO_CONFIG=/etc/streemo/device.env
+ExecStart=/opt/streemo/venv/bin/streemo-agent
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

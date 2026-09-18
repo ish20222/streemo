@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "streemo-agent"
+version = "1.0.0"
+description = "Streemo Raspberry Pi agent for ad screens and music"
+requires-python = ">=3.11"
+dependencies = [
+  "websocket-client>=1.8.0",
+]
+
+[project.scripts]
+streemo-agent = "streemo_agent.agent:main"
+streemo-pair = "streemo_agent.pair:main"
+streemo-video = "streemo_agent.player_video:main"
+streemo-music = "streemo_agent.player_music:main"
+
+[tool.setuptools.packages.find]
+include = ["streemo_agent*"]

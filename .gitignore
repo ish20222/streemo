@@ -1,0 +1,15 @@
+node_modules
+.next
+dist
+.env
+.env.local
+*.log
+uploads
+.DS_Store
+apps/web/uploads
+apps/pi-agent/.venv
+apps/pi-agent/__pycache__
+**/__pycache__/
+*.pyc
+.prisma
+apps/web/.env

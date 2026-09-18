@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: streemo
+    ports:
+      - "5432:5432"
+    volumes:
+      - streemo_pg:/var/lib/postgresql/data
+
+volumes:
+  streemo_pg:
