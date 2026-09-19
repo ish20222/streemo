@@ -7,7 +7,7 @@ import { jsonError } from "@/lib/utils";
 
 const schema = z.object({
   pairingCode: z.string().min(4).max(12),
-  name: z.string().min(1).max(120).optional(),
+  name: z.string().min(1).max(120).nullish(),
 });
 
 export async function POST(req: NextRequest) {

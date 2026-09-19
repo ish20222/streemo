@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -15,17 +16,23 @@ CONFIG_PATH = CONFIG_DIR / "device.env"
 
 def pair(server_url: str, pairing_code: str, name: str | None) -> None:
     server_url = server_url.rstrip("/")
-    body = json.dumps(
-        {"pairingCode": pairing_code.upper().strip(), "name": name}
-    ).encode()
+    # Never send "name": null — Zod .optional() rejects null on older servers.
+    payload: dict = {"pairingCode": pairing_code.upper().strip()}
+    if name:
+        payload["name"] = name
+    body = json.dumps(payload).encode()
     req = urllib.request.Request(
         f"{server_url}/api/devices/pair",
         data=body,
         headers={"Content-Type": "application/json", "User-Agent": "streemo-pair/1.0"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        data = json.loads(resp.read().decode())
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode(errors="replace")
+        raise RuntimeError(f"HTTP {exc.code}: {detail or exc.reason}") from exc
 
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     content = "\n".join(
