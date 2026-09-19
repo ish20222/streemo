@@ -34,7 +34,12 @@ def load_config(path: Path = CONFIG_PATH) -> dict[str, str]:
     cfg: dict[str, str] = {}
     if not path.exists():
         return cfg
-    for line in path.read_text().splitlines():
+    try:
+        text = path.read_text()
+    except OSError as exc:
+        LOG.warning("Cannot read %s: %s", path, exc)
+        return cfg
+    for line in text.splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue

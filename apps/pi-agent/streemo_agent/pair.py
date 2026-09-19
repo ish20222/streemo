@@ -35,24 +35,33 @@ def pair(server_url: str, pairing_code: str, name: str | None) -> None:
         raise RuntimeError(f"HTTP {exc.code}: {detail or exc.reason}") from exc
 
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    # systemd EnvironmentFile does not want shell quotes; agent load_config strips them
+    # but bare KEY=value is the portable form for both.
     content = "\n".join(
         [
-            f'STREEMO_SERVER_URL="{server_url}"',
-            f'STREEMO_DEVICE_ID="{data["deviceId"]}"',
-            f'STREEMO_DEVICE_TOKEN="{data["deviceToken"]}"',
+            f"STREEMO_SERVER_URL={server_url}",
+            f"STREEMO_DEVICE_ID={data['deviceId']}",
+            f"STREEMO_DEVICE_TOKEN={data['deviceToken']}",
             "",
         ]
     )
     CONFIG_PATH.write_text(content)
+    # Agent runs as User=streemo — must be able to read this file.
+    os.chmod(CONFIG_DIR, 0o750)
     os.chmod(CONFIG_PATH, 0o640)
     try:
         import grp
         import pwd
 
+        uid = pwd.getpwnam("streemo").pw_uid
         gid = grp.getgrnam("streemo").gr_gid
-        os.chown(CONFIG_PATH, 0, gid)
-    except Exception:
-        pass
+        os.chown(CONFIG_DIR, 0, gid)
+        os.chown(CONFIG_PATH, uid, gid)
+    except KeyError:
+        print(
+            "Warning: user/group 'streemo' missing — agent may not read device.env",
+            file=sys.stderr,
+        )
     print(f"Paired as {data.get('name')} ({data['deviceId']})")
     print(f"Wrote {CONFIG_PATH}")
     print("Restart services: sudo systemctl restart streemo-agent streemo-video streemo-music")
